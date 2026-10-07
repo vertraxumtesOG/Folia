@@ -11114,7 +11114,7 @@ index cc6f4e2845ef1e95c765d65f17c8aa1b06652927..7316c756f1c228eef710219a659c7968
                  foundPlayers.add(player);
              }
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 8389d812b2d80a122fd1945b3182c08cdeda7d1c..9025e856bf39bbd8c807710b8e323f319eb9f24b 100644
+index 8389d812b2d80a122fd1945b3182c08cdeda7d1c..dfbba1bce659ef6a7d6a0b5f1d9b9b4275b79673 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -193,11 +193,11 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -12258,12 +12258,16 @@ index 8389d812b2d80a122fd1945b3182c08cdeda7d1c..9025e856bf39bbd8c807710b8e323f31
              if (!(entity instanceof ServerPlayer) && entity.getRemovalReason() != net.minecraft.world.entity.Entity.RemovalReason.CHANGED_DIMENSION) {
                  for (ServerPlayer player : ServerLevel.this.server.getPlayerList().getPlayers()) { // Paper - call onEntityRemove for all online players
                      player.getBukkitEntity().onEntityRemove(entity);
-@@ -3243,11 +3362,11 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+@@ -3243,11 +3362,15 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
      private long lagCompensationTick = currentLagCompensationTick();
  
      public long getLagCompensationTick() {
 -        return this.lagCompensationTick;
-+        return this.getCurrentWorldData().getLagCompensationTick(); // Folia - region threading
++        // Folia start - region threading
++        final io.papermc.paper.threadedregions.RegionizedWorldData worldData = this.getCurrentWorldData();
++        // may be called off-region, e.g. when the ServerPlayer is created during login on the global tick thread
++        return worldData != null ? worldData.getLagCompensationTick() : currentLagCompensationTick();
++        // Folia end - region threading
      }
  
      public void updateLagCompensationTick() {
