@@ -5,7 +5,7 @@ Subject: [PATCH] Do not discard ender pearls while owner is teleporting
 
 
 diff --git a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
-index d0dba5cc351903fb762e231a95f302479794185f..9411e2a3f55e3fd8cf94049fcb51179e14eb7f47 100644
+index 4516bfad2d1907c6161fbf0bf2105efb5ce5228c..02762bfe638bb8b58f68c7ee916e0b81d012f502 100644
 --- a/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
 +++ b/net/minecraft/world/entity/projectile/throwableitemprojectile/ThrownEnderpearl.java
 @@ -177,6 +177,11 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
@@ -20,7 +20,7 @@ index d0dba5cc351903fb762e231a95f302479794185f..9411e2a3f55e3fd8cf94049fcb51179e
                  if (entity != null) {
                      attemptTeleport(entity, (ServerLevel)this.level(), this.position());
                  }
-@@ -265,6 +270,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
+@@ -263,6 +268,7 @@ public class ThrownEnderpearl extends ThrowableItemProjectile {
              Entity owner = this.owner != null ? findOwnerIncludingDeadPlayer(serverLevel, this.owner.getUUID()) : null;
              if (owner instanceof ServerPlayer serverPlayer
                  && !owner.isAlive()
