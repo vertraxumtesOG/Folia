@@ -1,0 +1,243 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Dueris <122416109+Dueris@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:29:52 +0200
+Subject: [PATCH] Fix multiple issues surrounding criterion (#496)
+
+
+diff --git a/net/minecraft/advancements/triggers/SimpleCriterionTrigger.java b/net/minecraft/advancements/triggers/SimpleCriterionTrigger.java
+index d76a338ab4f326e6105adc451eee3d4601403c98..a8cb7e58009486941e05e423e58a54b873e74e01 100644
+--- a/net/minecraft/advancements/triggers/SimpleCriterionTrigger.java
++++ b/net/minecraft/advancements/triggers/SimpleCriterionTrigger.java
+@@ -17,6 +17,7 @@ import net.minecraft.world.level.storage.loot.ValidationContextSource;
+ 
+ public abstract class SimpleCriterionTrigger<T extends SimpleCriterionTrigger.SimpleInstance> implements CriterionTrigger<T> {
+     protected void trigger(final ServerPlayer player, final Predicate<T> matcher) {
++        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(player, "Cannot trigger criterion async"); // Folia - region threading
+         PlayerAdvancements advancements = player.getAdvancements();
+         Map<PlayerAdvancements.TriggerInstanceKey, T> listenersForType = advancements.getTriggerMapForType(this);
+         if (listenersForType != null && !listenersForType.isEmpty()) {
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 6dfbaa9d68ec896132a6379a10699cb4a0794b56..e1d687862bae6ebc724d4358aded78e2670ecc7e 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -1680,6 +1680,26 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     }
+ 
+     // Folia start - region threading
++    public List<ServerPlayer> getLocalPlayers(final Predicate<? super ServerPlayer> selector) {
++        return this.getLocalPlayers(selector, Integer.MAX_VALUE);
++    }
++
++    // vanilla copy of above, getPlayers method, using getLocalPlayers from current world data
++    public List<ServerPlayer> getLocalPlayers(final Predicate<? super ServerPlayer> selector, final int maxResults) {
++        List<ServerPlayer> result = Lists.newArrayList();
++
++        for (ServerPlayer player : this.getLocalPlayers()) {
++            if (selector.test(player)) {
++                result.add(player);
++                if (result.size() >= maxResults) {
++                    return result;
++                }
++            }
++        }
++
++        return result;
++    }
++
+     @Nullable
+     public ServerPlayer getRandomLocalPlayer() {
+         List<ServerPlayer> list = this.getLocalPlayers();
+diff --git a/net/minecraft/stats/ServerRecipeBook.java b/net/minecraft/stats/ServerRecipeBook.java
+index ac3fbaf20c3ed8ca981c9071f1bf95f2ad169f85..12eae8708c244628459a209f5cfd720171bc8247 100644
+--- a/net/minecraft/stats/ServerRecipeBook.java
++++ b/net/minecraft/stats/ServerRecipeBook.java
+@@ -59,6 +59,7 @@ public class ServerRecipeBook extends RecipeBook {
+     }
+ 
+     public int addRecipes(final Collection<RecipeHolder<?>> recipes, final ServerPlayer player) {
++        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(player, "Cannot add recipes async"); // Folia - region threading
+         List<ClientboundRecipeBookAddPacket.Entry> recipesToAdd = new ArrayList<>();
+ 
+         for (RecipeHolder<?> recipe : recipes) {
+@@ -86,6 +87,7 @@ public class ServerRecipeBook extends RecipeBook {
+     }
+ 
+     public int removeRecipes(final Collection<RecipeHolder<?>> recipes, final ServerPlayer player) {
++        ca.spottedleaf.moonrise.common.util.TickThread.ensureTickThread(player, "Cannot remove recipes async"); // Folia - region threading
+         List<RecipeDisplayId> recipesToRemove = Lists.newArrayList();
+ 
+         for (RecipeHolder<?> recipe : recipes) {
+diff --git a/net/minecraft/world/entity/LightningBolt.java b/net/minecraft/world/entity/LightningBolt.java
+index 5b19fee8a4861e5dbfb545bbe4dabda7787c430a..ba595aa794236f3609b9d5971e2e86c6360ca679 100644
+--- a/net/minecraft/world/entity/LightningBolt.java
++++ b/net/minecraft/world/entity/LightningBolt.java
+@@ -126,7 +126,7 @@ public class LightningBolt extends Entity {
+                             entityx -> entityx.isAlive() && !this.hitEntities.contains(entityx)
+                         );
+ 
+-                    for (ServerPlayer player : ((ServerLevel)this.level()).getPlayers(playerx -> playerx.distanceTo(this) < 256.0F)) {
++                    for (ServerPlayer player : ((ServerLevel)this.level()).getLocalPlayers(playerx -> playerx.distanceTo(this) < 256.0F)) { // Folia - region threading
+                         CriteriaTriggers.LIGHTNING_STRIKE.trigger(player, this, viewers);
+                     }
+                 }
+diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
+index 1cb8265c1313ad4893d45c344b03007fc4e2de4b..64eaeae579b67f5f7a9df967dce5011741850c09 100644
+--- a/net/minecraft/world/entity/LivingEntity.java
++++ b/net/minecraft/world/entity/LivingEntity.java
+@@ -1576,7 +1576,16 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+         }
+ 
+         if (source.getEntity() instanceof ServerPlayer sourcePlayer) {
+-            CriteriaTriggers.PLAYER_HURT_ENTITY.trigger(sourcePlayer, this, source, originalDamage, damage, blocked);
++            // Folia start - region threading
++            final float fDamage = damage;
++
++            // indirect damage sources for example can cause this to fail given you cannot
++            // trigger criterion asynchronously, so we attempt to schedule
++
++            sourcePlayer.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                CriteriaTriggers.PLAYER_HURT_ENTITY.trigger(entityPlayer, this, source, originalDamage, fDamage, blocked);
++            });
++            // Folia end - region threading
+         }
+ 
+         return success;
+@@ -2584,7 +2593,15 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+                     }
+ 
+                     if (source.getEntity() instanceof ServerPlayer sourcePlayer) {
+-                        CriteriaTriggers.PLAYER_HURT_ENTITY.trigger(sourcePlayer, this, source, originalDamage, dmg, true); // Paper - fix taken/dealt param order
++                        // Folia start - region threading
++
++                        // indirect damage sources for example can cause this to fail given you cannot
++                        // trigger criterion asynchronously, so we attempt to schedule
++
++                        sourcePlayer.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                            CriteriaTriggers.PLAYER_HURT_ENTITY.trigger(entityPlayer, this, source, originalDamage, dmg, true); // Paper - fix taken/dealt param order
++                        });
++                        // Folia end - region threading
+                     }
+ 
+                     return !io.papermc.paper.configuration.GlobalConfiguration.get().unsupportedSettings.skipVanillaDamageTickWhenShieldBlocked; // Paper - this should always return true, however expose an unsupported setting to flip this to false to enable "shield stunning".
+@@ -4039,7 +4056,17 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
+ 
+     public void onItemPickup(final ItemEntity entity) {
+         if (EntityReference.getEntity(entity.thrower, this.level()::getGlobalPlayerByUUID, Entity.class) instanceof ServerPlayer serverPlayer) { // Paper - check global player list where appropriate
+-            CriteriaTriggers.THROWN_ITEM_PICKED_UP_BY_ENTITY.trigger(serverPlayer, entity.getItem(), this);
++            // Folia start - region threading
++
++            // note: getGlobalPlayerUUID is overridden by ServerLevel to get
++            //       from full player list, not local players like EntityGetter
++            //       currently does from other changes. as such, the player may
++            //       be out of region. schedule this.
++
++            serverPlayer.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                CriteriaTriggers.THROWN_ITEM_PICKED_UP_BY_ENTITY.trigger(entityPlayer, entity.getItem(), this);
++            });
++            // Folia end - region threading
+         }
+     }
+ 
+diff --git a/net/minecraft/world/entity/animal/Animal.java b/net/minecraft/world/entity/animal/Animal.java
+index b7f089835c00cd5d5f98ca83e6ff1b0d61bee909..88faed31be61cfbcbc377d2a0a6a6962526ad3bc 100644
+--- a/net/minecraft/world/entity/animal/Animal.java
++++ b/net/minecraft/world/entity/animal/Animal.java
+@@ -258,8 +258,12 @@ public abstract class Animal extends AgeableMob {
+         if (player == null) player = partner.getLoveCause();
+         if (player != null) {
+             // Paper end - Call EntityBreedEvent
+-            player.awardStat(Stats.ANIMALS_BRED);
+-            CriteriaTriggers.BRED_ANIMALS.trigger(player, this, partner, offspring);
++            // Folia start - region threading
++            player.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                entityPlayer.awardStat(Stats.ANIMALS_BRED);
++                CriteriaTriggers.BRED_ANIMALS.trigger(entityPlayer, this, partner, offspring);
++            });
++            // Folia end - region threading
+         } // Paper - Call EntityBreedEvent
+         this.setAge(6000);
+         partner.setAge(6000);
+diff --git a/net/minecraft/world/entity/animal/fox/Fox.java b/net/minecraft/world/entity/animal/fox/Fox.java
+index dbe9cb45c7687a9f8da3f2d8b779d15bbe9a3473..4fbdb8bd394f31ede688897541b94ed6fbd30449 100644
+--- a/net/minecraft/world/entity/animal/fox/Fox.java
++++ b/net/minecraft/world/entity/animal/fox/Fox.java
+@@ -917,8 +917,13 @@ public class Fox extends Animal {
+                 // CraftBukkit end - call EntityBreedEvent
+ 
+                 if (loveCause != null) {
+-                    loveCause.awardStat(Stats.ANIMALS_BRED);
+-                    CriteriaTriggers.BRED_ANIMALS.trigger(loveCause, this.animal, this.partner, offspring);
++                    // Folia start - region threading
++                    final Animal partner = this.partner;
++                    loveCause.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                        entityPlayer.awardStat(Stats.ANIMALS_BRED);
++                        CriteriaTriggers.BRED_ANIMALS.trigger(entityPlayer, this.animal, partner, offspring);
++                    });
++                    // Folia end - region threading
+                 }
+ 
+                 this.animal.setAge(6000);
+diff --git a/net/minecraft/world/entity/animal/turtle/Turtle.java b/net/minecraft/world/entity/animal/turtle/Turtle.java
+index 7ee9d2f25178ac97b74d0f2c3619ddfaf2004bea..9b6b3ba79446e8be8da9c31daea9726882bd6249 100644
+--- a/net/minecraft/world/entity/animal/turtle/Turtle.java
++++ b/net/minecraft/world/entity/animal/turtle/Turtle.java
+@@ -315,8 +315,13 @@ public class Turtle extends Animal {
+             // Paper end - Add EntityFertilizeEggEvent event
+ 
+             if (loveCause != null) {
+-                loveCause.awardStat(Stats.ANIMALS_BRED);
+-                CriteriaTriggers.BRED_ANIMALS.trigger(loveCause, this.animal, this.partner, null);
++                // Folia start - region threading
++                final Animal partner = this.partner;
++                loveCause.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                    entityPlayer.awardStat(Stats.ANIMALS_BRED);
++                    CriteriaTriggers.BRED_ANIMALS.trigger(entityPlayer, this.animal, partner, null);
++                });
++                // Folia end - region threading
+             }
+ 
+             this.turtle.setHasEgg(true);
+diff --git a/net/minecraft/world/entity/monster/zombie/ZombieVillager.java b/net/minecraft/world/entity/monster/zombie/ZombieVillager.java
+index 9e4f11c6fd8d0f92b9a905675b84d710d98e3005..450354dc9bf37a924bed2797a3474d6b6b6d43c0 100644
+--- a/net/minecraft/world/entity/monster/zombie/ZombieVillager.java
++++ b/net/minecraft/world/entity/monster/zombie/ZombieVillager.java
+@@ -268,7 +268,17 @@ public class ZombieVillager extends Zombie implements VillagerDataHolder {
+                 if (this.conversionStarter != null) {
+                     Player player = level.getGlobalPlayerByUUID(this.conversionStarter); // Paper - check global player list where appropriate
+                     if (player instanceof ServerPlayer serverPlayer) {
+-                        CriteriaTriggers.CURED_ZOMBIE_VILLAGER.trigger(serverPlayer, this, villager);
++                        // Folia start - region threading
++
++                        // note: getGlobalPlayerUUID is overridden by ServerLevel to get
++                        //       from full player list, not local players like EntityGetter
++                        //       currently does from other changes. as such, the player may
++                        //       be out of region. schedule this.
++
++                        serverPlayer.getBukkitEntity().taskScheduler.scheduleOrExecute((ServerPlayer entityPlayer) -> {
++                            CriteriaTriggers.CURED_ZOMBIE_VILLAGER.trigger(entityPlayer, this, villager);
++                        });
++                        // Folia end - region threading
+                         level.onReputationEvent(ReputationEventType.ZOMBIE_VILLAGER_CURED, player, villager);
+                     }
+                 }
+diff --git a/net/minecraft/world/level/dimension/end/EnderDragonFight.java b/net/minecraft/world/level/dimension/end/EnderDragonFight.java
+index 824ef3f458505569fe5b8efb2055ecea7ba6cc56..9406e4044a1d96618fcf627a752a2a6dd346552d 100644
+--- a/net/minecraft/world/level/dimension/end/EnderDragonFight.java
++++ b/net/minecraft/world/level/dimension/end/EnderDragonFight.java
+@@ -290,6 +290,7 @@ public class EnderDragonFight extends SavedData {
+             this.dragonKilled = false;
+             EnderDragon dragon = this.createNewDragon();
+             if (dragon != null) {
++                updatePlayers(); this.ticksSinceLastPlayerScan = 0; // Folia - region threading - update this now, so we ensure all players are in the current region
+                 for (ServerPlayer player : this.dragonEvent.getPlayers()) {
+                     CriteriaTriggers.SUMMONED_ENTITY.trigger(player, dragon);
+                 }
+@@ -392,7 +393,7 @@ public class EnderDragonFight extends SavedData {
+     private void updatePlayers() {
+         Set<ServerPlayer> newPlayers = Sets.newHashSet();
+ 
+-        for (ServerPlayer player : this.level.getPlayers(this.validPlayer)) {
++        for (ServerPlayer player : this.level.getLocalPlayers(this.validPlayer)) { // Folia - region threading
+             this.dragonEvent.addPlayer(player);
+             newPlayers.add(player);
+         }

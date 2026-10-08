@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Dueris <122416109+Dueris@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:25:25 +0200
+Subject: [PATCH] Use CHM for playersByName (#497)
+
+
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 259eb7574841b1b885093b534440f8a40db4e8e2..982ed9c0452842eb3c58681713e51bfef06e3bc2 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -132,7 +132,7 @@ public abstract class PlayerList {
+ 
+     // CraftBukkit start
+     private org.bukkit.craftbukkit.CraftServer cserver;
+-    private final Map<String,ServerPlayer> playersByName = new java.util.HashMap<>();
++    private final Map<String,ServerPlayer> playersByName = new java.util.concurrent.ConcurrentHashMap<>(); // Folia - region threading
+     public @Nullable String collideRuleTeamName; // Paper - Configurable player collision
+ 
+     // Folia start - region threading

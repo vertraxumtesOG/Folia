@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Dueris <122416109+Dueris@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:24:57 +0200
+Subject: [PATCH] Use Minecraft namespace for the teleport command in
+ CommandServerHealth (#494)
+
+
+diff --git a/io/papermc/paper/threadedregions/commands/CommandServerHealth.java b/io/papermc/paper/threadedregions/commands/CommandServerHealth.java
+index aa860cfe9de616f185163fe74e0f4f49bd13a805..e5ceaf5c01a5b95c8d5c516d8142abb909cd75b6 100644
+--- a/io/papermc/paper/threadedregions/commands/CommandServerHealth.java
++++ b/io/papermc/paper/threadedregions/commands/CommandServerHealth.java
+@@ -262,7 +262,7 @@ public final class CommandServerHealth extends Command {
+                 .append(formatRegionStats(region.getData().getRegionStats(), (i + 1) != len))
+                 .build()
+ 
+-                .clickEvent(ClickEvent.clickEvent(ClickEvent.Action.RUN_COMMAND, Payload.string("/minecraft:execute as @s in " + world.getWorld().getKey().toString() + " run tp " + centerBlockX + ".5 " + yLoc + " " + centerBlockZ + ".5")))
++                .clickEvent(ClickEvent.clickEvent(ClickEvent.Action.RUN_COMMAND, Payload.string("/minecraft:execute as @s in " + world.getWorld().getKey().toString() + " run minecraft:tp " + centerBlockX + ".5 " + yLoc + " " + centerBlockZ + ".5")))
+                 .hoverEvent(HoverEvent.hoverEvent(HoverEvent.Action.SHOW_TEXT, Component.text("Click to teleport to " + location, SECONDARY)));
+ 
+             lowestRegionsBuilder.append(line);

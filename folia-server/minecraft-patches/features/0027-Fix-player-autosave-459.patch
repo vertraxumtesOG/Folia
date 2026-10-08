@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Dueris <122416109+Dueris@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:27:29 +0200
+Subject: [PATCH] Fix player autosave (#459)
+
+
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index efa169bcdf851efccdfbc0f542411fd29300f396..534ece7d3664af7959d1eedfb5a88ba6f8be1dda 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -298,6 +298,7 @@ public abstract class PlayerList {
+         this.players.add(player);
+         this.playersByName.put(player.getScoreboardName().toLowerCase(java.util.Locale.ROOT), player); // Spigot
+         this.playersByUUID.put(player.getUUID(), player);
++        player.lastSave = System.nanoTime(); // Folia - region threading
+         // this.broadcastAll(ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(List.of(player))); // CraftBukkit - replaced with loop below
+         // Paper start - Fire PlayerJoinEvent when Player is actually ready; correctly register player BEFORE PlayerJoinEvent, so the entity is valid and doesn't require tick delay hacks
+         player.suppressTrackerForLogin = true;
+@@ -1048,7 +1049,7 @@ public abstract class PlayerList {
+                 continue;
+             }
+             // Folia end - region threading
+-            if (interval == -1 || now - player.lastSave >= timeInterval) { // Folia - region threading
++            if (interval == -1 || player.lastSave == ServerPlayer.LAST_SAVE_ABSENT || now - player.lastSave >= timeInterval) { // Folia - region threading
+                 profiler.startTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.PLAYER_SAVE); try { // Folia - profiler
+                 this.save(player);
+                 } finally { profiler.stopTimer(ca.spottedleaf.leafprofiler.LProfilerRegistry.PLAYER_SAVE); } // Folia - profiler

@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: lewisgibson <12851394+lewisgibson@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:26:26 +0200
+Subject: [PATCH] Do not report halted regions in the watchdog (#515)
+
+
+diff --git a/io/papermc/paper/threadedregions/FoliaWatchdogThread.java b/io/papermc/paper/threadedregions/FoliaWatchdogThread.java
+index e9ca1a15049b0211d10401cb78e953b93afaf6c7..54b7e7d45d51d0083e1e2b87dcc0925d685a6115 100644
+--- a/io/papermc/paper/threadedregions/FoliaWatchdogThread.java
++++ b/io/papermc/paper/threadedregions/FoliaWatchdogThread.java
+@@ -7,6 +7,7 @@ import org.bukkit.Bukkit;
+ import org.slf4j.Logger;
+ import org.spigotmc.WatchdogThread;
+ import java.lang.management.ManagementFactory;
++import java.lang.management.ThreadInfo;
+ import java.util.ArrayList;
+ import java.util.LinkedHashSet;
+ import java.util.List;
+@@ -68,6 +69,12 @@ public final class FoliaWatchdogThread extends Thread {
+                 if (elapsed <= TimeUnit.SECONDS.toNanos(5L)) {
+                     continue;
+                 }
++                // the thread may have exited, i.e. the region was halted during shutdown
++                final ThreadInfo threadInfo = ManagementFactory.getThreadMXBean().getThreadInfo(tick.thread.threadId(), Integer.MAX_VALUE);
++                if (threadInfo == null) {
++                    continue;
++                }
++
+                 tick.lastPrint = now;
+ 
+                 final double totalElapsedS = (double)(now - tick.start) / 1.0E9;
+@@ -82,10 +89,7 @@ public final class FoliaWatchdogThread extends Thread {
+                     LOGGER.error("Global region has not responded in " + totalElapsedS + "s:");
+                 }
+ 
+-                WatchdogThread.dumpThread(
+-                    ManagementFactory.getThreadMXBean().getThreadInfo(tick.thread.threadId(), Integer.MAX_VALUE),
+-                    Bukkit.getServer().getLogger()
+-                );
++                WatchdogThread.dumpThread(threadInfo, Bukkit.getServer().getLogger());
+             }
+         }
+     }

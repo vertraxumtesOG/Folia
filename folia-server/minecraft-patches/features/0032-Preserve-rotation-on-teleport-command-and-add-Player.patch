@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: luigiofthebakery <51258301+luigiofthebakery@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:30:50 +0200
+Subject: [PATCH] Preserve rotation on teleport command and add
+ PlayerChangedWorldEvent for teleportAsync (#395)
+
+The event is fired once the player has been placed into the destination
+world, so it also covers portals and respawns.
+
+diff --git a/io/papermc/paper/threadedregions/TeleportUtils.java b/io/papermc/paper/threadedregions/TeleportUtils.java
+index 2a64a5b2cf049661fe3f5a22ddfa39979624f5ec..8f7c514693e0fe360b0a5a1ca93c1a9f161c8826 100644
+--- a/io/papermc/paper/threadedregions/TeleportUtils.java
++++ b/io/papermc/paper/threadedregions/TeleportUtils.java
+@@ -41,7 +41,7 @@ public final class TeleportUtils {
+                             return;
+                         }
+                         (useFromRootVehicle ? realFrom.getRootVehicle() : realFrom).teleportAsync(
+-                            ((CraftWorld)loc.getWorld()).getHandle(), pos, null, null, null,
++                            ((CraftWorld)loc.getWorld()).getHandle(), pos, yaw, pitch, null,
+                             cause, teleportFlags, onComplete
+                         );
+                     },
+diff --git a/net/minecraft/server/commands/TeleportCommand.java b/net/minecraft/server/commands/TeleportCommand.java
+index 13d7965fd4f99f0848b080349df41f8b1c31a19b..2e4da977b65082c007c0e1b9a33302d4b72dd8ce 100644
+--- a/net/minecraft/server/commands/TeleportCommand.java
++++ b/net/minecraft/server/commands/TeleportCommand.java
+@@ -248,8 +248,8 @@ public class TeleportCommand {
+         // Folia start - region threading
+         if (true) {
+             Vec3 posFinal = new Vec3(x, y, z);
+-            Float yawFinal = Float.valueOf(newYRot);
+-            Float pitchFinal = Float.valueOf(newXRot);
++            Float yawFinal = Float.valueOf(Mth.wrapDegrees(yRot)); // Folia - preserve rotation - yRot/xRot are absolute, the relative values are deltas
++            Float pitchFinal = Float.valueOf(Mth.wrapDegrees(xRot)); // Folia - preserve rotation - yRot/xRot are absolute, the relative values are deltas
+             victim.getBukkitEntity().taskScheduler.schedule((Entity nmsEntity) -> {
+                 nmsEntity.stopRiding();
+                 nmsEntity.teleportAsync(
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index d65ae130f0156f3b6c410dc605e7ba4569e92410..7096e085df39e9ac4abcbdef48a1ba26539c8bab 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -4348,6 +4348,16 @@ public abstract class Entity
+                         node.root.postChangeDimension();
+                     }
+ 
++                    // Folia start - fire PlayerChangedWorldEvent for async teleports
++                    if (originWorld != destination) {
++                        for (EntityTreeNode node : fullTree) {
++                            if (node.root instanceof net.minecraft.server.level.ServerPlayer player) {
++                                new org.bukkit.event.player.PlayerChangedWorldEvent(player.getBukkitEntity(), originWorld.getWorld()).callEvent();
++                            }
++                        }
++                    }
++                    // Folia end - fire PlayerChangedWorldEvent for async teleports
++
+                     if (teleportComplete != null) {
+                         teleportComplete.accept(Entity.this);
+                     }

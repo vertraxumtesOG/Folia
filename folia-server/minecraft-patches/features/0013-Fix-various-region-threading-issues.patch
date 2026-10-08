@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vertraxumtesOG <kekfluffy@gmail.com>
+Date: Thu, 8 Oct 2026 23:24:32 +0200
+Subject: [PATCH] Fix various region threading issues
+
+- Drop duplicate finish configuration packets before scheduling (#520)
+- Resync client predicted state on interaction with entities outside the region (#502)
+- Re-enable the dialog command, it only sends packets (#434)
+
+diff --git a/net/minecraft/commands/Commands.java b/net/minecraft/commands/Commands.java
+index 4ddb5e7ce3529466c3930caa9aa6b18158e9a63d..6472a9e41f21205726a6d7f959241c8914acd8b7 100644
+--- a/net/minecraft/commands/Commands.java
++++ b/net/minecraft/commands/Commands.java
+@@ -206,7 +206,7 @@ public class Commands {
+         //DataPackCommand.register(this.dispatcher, context); // Folia - region threading - TODO
+         //DebugCommand.register(this.dispatcher); // Folia - region threading - TODO
+         DefaultGameModeCommands.register(this.dispatcher);
+-        //DialogCommand.register(this.dispatcher, context); // Folia - region threading - TODO
++        DialogCommand.register(this.dispatcher, context);
+         DifficultyCommand.register(this.dispatcher);
+         EffectCommands.register(this.dispatcher, context);
+         EmoteCommands.register(this.dispatcher);
+diff --git a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
+index 77c4670868a95dc7b13461dfa67af34b0a3c329a..e46e30a671e16784ce686b534f6f974dd3729d7f 100644
+--- a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
+@@ -54,6 +54,7 @@ public class ServerConfigurationPacketListenerImpl extends ServerCommonPacketLis
+     private @Nullable PrepareSpawnTask prepareSpawnTask;
+     public io.papermc.paper.connection.PaperPlayerConfigurationConnection paperConnection; // Paper
+     public net.minecraft.server.level.ServerPlayer switchToMain; // Folia - region threading - rewrite login process
++    private final java.util.concurrent.atomic.AtomicBoolean receivedFinishConfiguration = new java.util.concurrent.atomic.AtomicBoolean(); // Folia - region threading - drop duplicate finish configuration packets before they are scheduled
+ 
+     public ServerConfigurationPacketListenerImpl(final MinecraftServer server, final Connection connection, final CommonListenerCookie cookie) {
+         super(server, connection, cookie);
+@@ -195,6 +196,11 @@ public class ServerConfigurationPacketListenerImpl extends ServerCommonPacketLis
+ 
+     @Override
+     public void handleConfigurationFinished(final ServerboundFinishConfigurationPacket packet) {
++        // Folia start - region threading - drop duplicate finish configuration packets before they are scheduled
++        if (!ca.spottedleaf.moonrise.common.util.TickThread.isTickThread() && !this.receivedFinishConfiguration.compareAndSet(false, true)) {
++            return;
++        }
++        // Folia end - region threading - drop duplicate finish configuration packets before they are scheduled
+         PacketUtils.ensureRunningOnSameThread(packet, this, this.server.packetProcessor());
+         this.finishCurrentTask(JoinWorldTask.TYPE);
+         this.connection.setupOutboundProtocol(GameProtocols.CLIENTBOUND_TEMPLATE.bind(RegistryFriendlyByteBuf.decorator(this.server.registryAccess())));
+diff --git a/net/minecraft/server/network/ServerGamePacketListenerImpl.java b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+index c86b1fd5e200c478d178be32791b6e8c960d47e2..f9200e1e31a55b884dbb3bf8cb35e3ac27ff0d84 100644
+--- a/net/minecraft/server/network/ServerGamePacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerGamePacketListenerImpl.java
+@@ -3031,6 +3031,21 @@ public class ServerGamePacketListenerImpl
+                     }
+                 }
+             }
++            // Folia start - region threading - resync client predicted state when the target is not owned by this region
++            else if (target != null && !ca.spottedleaf.moonrise.common.util.TickThread.isTickThreadFor(target)) {
++                this.player.containerMenu.sendAllDataToRemote();
++                if (target instanceof LivingEntity livingTarget) {
++                    final net.minecraft.network.Connection connection = this.connection;
++                    livingTarget.getBukkitEntity().taskScheduler.schedule((final Entity ownedEntity) -> {
++                        final LivingEntity owned = (LivingEntity)ownedEntity;
++                        connection.send(new net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket(
++                            owned.getId(), java.util.Arrays.stream(net.minecraft.world.entity.EquipmentSlot.values())
++                            .map((slot) -> com.mojang.datafixers.util.Pair.of(slot, owned.getItemBySlot(slot).copy()))
++                            .collect(Collectors.toList()), true));
++                    }, null, 1L);
++                }
++            }
++            // Folia end - region threading - resync client predicted state when the target is not owned by this region
+             // Paper start - PlayerUseUnknownEntityEvent
+             else if (target == null) {
+                 CraftEventFactory.callPlayerUseUnknownEntityEvent(ServerGamePacketListenerImpl.this.player, packet.entityId(), false, packet.hand(), packet.location());

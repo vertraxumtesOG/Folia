@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vertraxumtesOG <kekfluffy@gmail.com>
+Date: Thu, 8 Oct 2026 23:25:26 +0200
+Subject: [PATCH] Fix max player count being offset by 1 (#500)
+
+The login result is checked during login and again when configuration
+finishes, so the connection already counted against the limit must not
+be rejected the second time.
+
+diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
+index 982ed9c0452842eb3c58681713e51bfef06e3bc2..efa169bcdf851efccdfbc0f542411fd29300f396 100644
+--- a/net/minecraft/server/players/PlayerList.java
++++ b/net/minecraft/server/players/PlayerList.java
+@@ -190,6 +190,10 @@ public abstract class PlayerList {
+ 
+     private boolean countConnection(Connection conn, int limit) {
+         synchronized (this.connectionsStateLock) {
++            // the login result is checked twice (login and configuration finish), do not count the same connection twice
++            if (this.usersCountedAgainstLimit.contains(conn)) {
++                return true;
++            }
+             int count = this.usersCountedAgainstLimit.size();
+             if (count >= limit) {
+                 return false;

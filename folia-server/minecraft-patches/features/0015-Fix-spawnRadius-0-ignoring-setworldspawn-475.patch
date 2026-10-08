@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: 965423a <297201957+965423a@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:24:56 +0200
+Subject: [PATCH] Fix spawnRadius 0 ignoring /setworldspawn (#475)
+
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index 16f49ae6736c475207f31392307e280ec06edbc3..d6e760c0f686e858ae273701640b73430b455d3f 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -498,6 +498,12 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+         BlockPos spawn = world.getLevelData().getRespawnData().pos();
+         double radius = Math.max(0.0, world.getGameRules().get(GameRules.RESPAWN_RADIUS).doubleValue());
+ 
++        // Folia start - fix spawnRadius 0 ignoring setworldspawn
++        if (radius <= 0.0) {
++            return spawn;
++        }
++        // Folia end - fix spawnRadius 0 ignoring setworldspawn
++
+         double spawnX = (double)spawn.getX() + 0.5;
+         double spawnZ = (double)spawn.getZ() + 0.5;
+ 

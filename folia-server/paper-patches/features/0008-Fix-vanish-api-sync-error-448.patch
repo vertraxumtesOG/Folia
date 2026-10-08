@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Rothes <47097395+Rothes@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:27:43 +0200
+Subject: [PATCH] Fix vanish api sync error (#448)
+
+Fixes #406
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+index e20a66e56f2e4520b2708d6ebc377392e4362816..84a75e0bc30fcace1c40eccb8bc3f047cd614706 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftPlayer.java
+@@ -248,6 +248,7 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
+     private long lastSaveTime; // Paper - getLastPlayed replacement API
+     private @Nullable CraftScoreboard scoreboardOverride;
+     public final net.minecraft.network.PacketProcessor packetProcessor = new net.minecraft.network.PacketProcessor(null); // Folia
++    private final java.util.concurrent.ConcurrentLinkedDeque<UUID> removedEntities = new java.util.concurrent.ConcurrentLinkedDeque<>(); // Folia - Fix vanish api sync error
+ 
+     // Folia start - region threading
+     // used only to notify tasks for packets
+@@ -2086,10 +2087,20 @@ public class CraftPlayer extends CraftHumanEntity implements Player, PluginMessa
+     }
+     // Paper end
+ 
++    // Folia start - Fix vanish api sync error
+     public void onEntityRemove(Entity entity) {
+-        this.invertedVisibilityEntities.remove(entity.getUUID());
++        if (this.invertedVisibilityEntities.isEmpty()) return; // Nothing hidden
++        this.removedEntities.add(entity.getUUID());
+     }
+ 
++    public void onTick() {
++        UUID item;
++        while ((item = this.removedEntities.poll()) != null) {
++            this.invertedVisibilityEntities.remove(item);
++        }
++    }
++    // Folia end - Fix vanish api sync error
++
+     @Override
+     public boolean canSee(Player player) {
+         return this.canSee((org.bukkit.entity.Entity) player);

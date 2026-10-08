@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Dueris <122416109+Dueris@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:25:26 +0200
+Subject: [PATCH] Disable debug subscriptions (#499)
+
+ServerDebugSubscribers is not region aware and crashes the server (#472, #432).
+
+diff --git a/net/minecraft/server/level/ServerPlayer.java b/net/minecraft/server/level/ServerPlayer.java
+index d6e760c0f686e858ae273701640b73430b455d3f..3837a7376465b5cca0436165257c84411999a953 100644
+--- a/net/minecraft/server/level/ServerPlayer.java
++++ b/net/minecraft/server/level/ServerPlayer.java
+@@ -3477,7 +3477,7 @@ public class ServerPlayer extends Player implements ca.spottedleaf.moonrise.patc
+     }
+ 
+     public Set<DebugSubscription<?>> debugSubscriptions() {
+-        return !this.server.debugSubscribers().hasRequiredPermissions(this) ? Set.of() : this.requestedDebugSubscriptions;
++        return Set.of(); // Folia - region threading - disable debug subscriptions
+     }
+ 
+     public record RespawnConfig(LevelData.RespawnData respawnData, boolean forced) {

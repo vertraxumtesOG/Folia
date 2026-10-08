@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nekoneko2872 <126634538+nekoneko2872@users.noreply.github.com>
+Date: Thu, 8 Oct 2026 23:28:33 +0200
+Subject: [PATCH] Fix villager brain initialization before destination world is
+ applied during async portal teleport (#446)
+
+Fixes #431
+
+diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
+index ba6e81f9292f52cdc474e3a3f52c21aafd5c682a..d65ae130f0156f3b6c410dc605e7ba4569e92410 100644
+--- a/net/minecraft/world/entity/Entity.java
++++ b/net/minecraft/world/entity/Entity.java
+@@ -4438,11 +4438,31 @@ public abstract class Entity
+         );
+     }
+ 
++    private static final ThreadLocal<ServerLevel> ASYNC_TELEPORT_DESTINATION_CONTEXT = new ThreadLocal<>();
++
++    protected static @Nullable ServerLevel getAsyncTeleportDestinationContext() {
++        return ASYNC_TELEPORT_DESTINATION_CONTEXT.get();
++    }
++
+     protected Entity transformForAsyncTeleport(ServerLevel destination, Vec3 pos, Float yaw, Float pitch, Vec3 velocity) {
+         this.removeAfterChangingDimensions(); // remove before so that any CBEntity#getHandle call affects this entity before copying
+ 
+-        Entity copy = this.getType().create(destination, EntitySpawnReason.DIMENSION_TRAVEL);
+-        copy.restoreFrom(this);
++        final ServerLevel previousAsyncTeleportDestination = ASYNC_TELEPORT_DESTINATION_CONTEXT.get();
++        final Entity copy;
++
++        // Villagers rebuild their Brain during both construction and NBT restore.
++        // Keep the destination visible across both phases so AI init can defer until join.
++        ASYNC_TELEPORT_DESTINATION_CONTEXT.set(destination);
++        try {
++            copy = this.getType().create(destination, EntitySpawnReason.DIMENSION_TRAVEL);
++            copy.restoreFrom(this);
++        } finally {
++            if (previousAsyncTeleportDestination == null) {
++                ASYNC_TELEPORT_DESTINATION_CONTEXT.remove();
++            } else {
++                ASYNC_TELEPORT_DESTINATION_CONTEXT.set(previousAsyncTeleportDestination);
++            }
++        }
+         copy.transform(pos, yaw, pitch, velocity);
+         // Folia start - keep multipart entities in the owning region after transform
+         if (copy instanceof net.minecraft.world.entity.boss.enderdragon.EnderDragon dragon) {
+diff --git a/net/minecraft/world/entity/npc/villager/Villager.java b/net/minecraft/world/entity/npc/villager/Villager.java
+index 0869ecb4b7fe07efa33d521bef2f525955bd3c30..5b6d7e908c2b1be81252a19c6100e39a348c1891 100644
+--- a/net/minecraft/world/entity/npc/villager/Villager.java
++++ b/net/minecraft/world/entity/npc/villager/Villager.java
+@@ -127,6 +127,7 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+     public int numberOfRestocksToday = 0;
+     private long lastRestockCheckDay;
+     private boolean assignProfessionWhenSpawned = false;
++    private @Nullable ServerLevel deferredBrainInitializationWorld; // Folia - region threading - defer brain schedule update during async teleport
+     private static final Brain.Provider<Villager> BRAIN_PROVIDER = Brain.provider(
+         List.of(
+             SensorType.NEAREST_LIVING_ENTITIES,
+@@ -216,9 +217,32 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+             brain.setSchedule(EnvironmentAttributes.VILLAGER_ACTIVITY);
+         }
+ 
++        // Folia start - region threading - the destination world data is not accessible while teleporting async
++        final ServerLevel asyncTeleportDestination = getAsyncTeleportDestinationContext();
++        if (asyncTeleportDestination != null) {
++            this.deferredBrainInitializationWorld = asyncTeleportDestination;
++            return;
++        }
++        // Folia end - region threading - the destination world data is not accessible while teleporting async
+         brain.updateActivityFromSchedule(this.level().environmentAttributes(), this.level().getLevelData().getGameTime(), this.position()); // Folia - region threading - not in the world yet
+     }
+ 
++    // Folia start - region threading - defer brain schedule update during async teleport
++    private boolean tryCompleteDeferredBrainInitialization(final ServerLevel level) {
++        final ServerLevel deferredWorld = this.deferredBrainInitializationWorld;
++        if (deferredWorld == null) {
++            return true;
++        }
++        if (level != this.level() || level != deferredWorld || !this.valid) {
++            return false;
++        }
++
++        this.getBrain().updateActivityFromSchedule(level.environmentAttributes(), level.getLevelData().getGameTime(), this.position());
++        this.deferredBrainInitializationWorld = null;
++        return true;
++    }
++    // Folia end - region threading - defer brain schedule update during async teleport
++
+     @Override
+     protected void ageBoundaryReached() {
+         super.ageBoundaryReached();
+@@ -261,9 +285,10 @@ public class Villager extends AbstractVillager implements VillagerDataHolder, Re
+     }
+     protected void customServerAiStep(ServerLevel level, final boolean inactive) {
+         // Paper end - EAR 2
++        final boolean brainReady = this.tryCompleteDeferredBrainInitialization(level); // Folia - region threading - defer brain schedule update during async teleport
+         ProfilerFiller profiler = Profiler.get();
+         profiler.push("villagerBrain");
+-        if (!inactive) this.getBrain().tick(level, this); // Paper - EAR 2
++        if (brainReady && !inactive) this.getBrain().tick(level, this); // Paper - EAR 2 // Folia - region threading - defer brain schedule update during async teleport
+         profiler.pop();
+         if (this.assignProfessionWhenSpawned) {
+             this.assignProfessionWhenSpawned = false;
