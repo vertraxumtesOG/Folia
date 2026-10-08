@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vertraxumtesOG <kekfluffy@gmail.com>
+Date: Thu, 8 Oct 2026 23:53:06 +0200
+Subject: [PATCH] FossilSMP version command
+
+
+diff --git a/src/main/java/io/papermc/paper/command/PaperVersionCommand.java b/src/main/java/io/papermc/paper/command/PaperVersionCommand.java
+index 5f17c295e2158b93ed6f77012c0ac5507ac88284..f68298bb8cc8f83c9b1b05b2f8be4d7a238a1395 100644
+--- a/src/main/java/io/papermc/paper/command/PaperVersionCommand.java
++++ b/src/main/java/io/papermc/paper/command/PaperVersionCommand.java
+@@ -162,17 +162,65 @@ public class PaperVersionCommand {
+         return this.computedVersion;
+     }
+ 
++    // Folia start - FossilSMP version message
++    private static final String SERVER_NAME = "FossilSMP";
++    private static final net.kyori.adventure.text.format.TextColor ACCENT = net.kyori.adventure.text.format.TextColor.color(0xE3C58F);
++    private static final net.kyori.adventure.text.format.TextColor LABEL = net.kyori.adventure.text.format.TextColor.color(0x9C8466);
++    private static final Component DIVIDER = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(
++        "<gradient:#5C4630:#E3C58F:#5C4630><strikethrough>                                        </strikethrough></gradient>"
++    );
++
++    private static String versionLine(final String minecraftVersion) {
++        final String[] parts = minecraftVersion.split("\\.");
++        return parts.length >= 2 ? parts[0] + "." + parts[1] + ".x" : minecraftVersion;
++    }
++
++    private static Component entry(final String label, final Component value) {
++        return Component.textOfChildren(
++            Component.text(" » ", LABEL),
++            Component.text(label + ": ", LABEL),
++            value
++        );
++    }
++
++    private Component buildVersionMessage() {
++        final io.papermc.paper.ServerBuildInfo info = io.papermc.paper.ServerBuildInfo.buildInfo();
++        final String mcVersion = info.minecraftVersionId();
++
++        final Component header = net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(
++            "  <bold><gradient:#F4E2B8:#C99A5B>" + versionLine(mcVersion) + " " + SERVER_NAME + " Folia</gradient></bold>"
++        );
++
++        final String build = info.buildNumber().isPresent() ? "#" + info.buildNumber().getAsInt() : "local";
++        final Component buildValue = Component.text(build, ACCENT)
++            .append(info.gitCommit().map(commit -> Component.text(" (" + commit.substring(0, Math.min(7, commit.length())) + ")", NamedTextColor.GRAY)).orElse(Component.empty()))
++            .append(info.gitBranch().map(branch -> Component.text(" " + branch, NamedTextColor.DARK_GRAY)).orElse(Component.empty()));
++
++        final String buildTime = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")
++            .withZone(java.time.ZoneId.systemDefault())
++            .format(info.buildTime());
++
++        return Component.textOfChildren(
++            DIVIDER, Component.newline(),
++            header, Component.newline(),
++            DIVIDER, Component.newline(),
++            entry("Minecraft", Component.text(mcVersion, ACCENT)), Component.newline(),
++            entry("Build", buildValue), Component.newline(),
++            entry("Erstellt", Component.text(buildTime, ACCENT)), Component.newline(),
++            entry("API", Component.text(Bukkit.getBukkitVersion(), NamedTextColor.GRAY)), Component.newline(),
++            entry("Status", this.versionFetcher.getVersionMessage()), Component.newline(),
++            DIVIDER
++        );
++    }
++    // Folia end - FossilSMP version message
++
+     private CompletableFuture<ComputedVersion> fetchVersionMessage() {
+        return CompletableFuture.supplyAsync(() -> {
+-           final Component message = Component.textOfChildren(
+-               Component.text(Bukkit.getVersionMessage(), NamedTextColor.WHITE),
+-               Component.newline(),
+-               this.versionFetcher.getVersionMessage()
+-           );
++           final Component message = this.buildVersionMessage(); // Folia - FossilSMP version message
+ 
+            return new ComputedVersion(
+                message.hoverEvent(Component.translatable("chat.copy.click", NamedTextColor.WHITE))
+-                   .clickEvent(ClickEvent.copyToClipboard(PlainTextComponentSerializer.plainText().serialize(message))),
++                   .clickEvent(ClickEvent.copyToClipboard(Bukkit.getVersionMessage())), // Folia - FossilSMP version message - copy the plain version string
+                System.currentTimeMillis()
+            );
+        });
