@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vertraxumtesOG <kekfluffy@gmail.com>
+Date: Thu, 8 Oct 2026 23:53:46 +0200
+Subject: [PATCH] FossilSMP client brand
+
+
+diff --git a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
+index e46e30a671e16784ce686b534f6f974dd3729d7f..5a2933c8fb211f021e28797be426466d66bb2a76 100644
+--- a/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
++++ b/net/minecraft/server/network/ServerConfigurationPacketListenerImpl.java
+@@ -103,7 +103,7 @@ public class ServerConfigurationPacketListenerImpl extends ServerCommonPacketLis
+ 
+     public void startConfiguration() {
+         new io.papermc.paper.event.connection.configuration.PlayerConnectionInitialConfigureEvent(this.paperConnection).callEvent(); // Paper
+-        this.send(new ClientboundCustomPayloadPacket(new BrandPayload(this.server.getServerModName())));
++        this.send(new ClientboundCustomPayloadPacket(new BrandPayload("FossilSMP Folia"))); // Folia - FossilSMP brand shown in F3, Velocity appends " (Velocity)" itself
+         ServerLinks serverLinks = this.server.serverLinks();
+         // Paper start
+         org.bukkit.craftbukkit.CraftServerLinks links = new org.bukkit.craftbukkit.CraftServerLinks(serverLinks);
