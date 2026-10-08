@@ -5,10 +5,10 @@ Subject: [PATCH] FossilSMP version command
 
 
 diff --git a/src/main/java/io/papermc/paper/command/PaperVersionCommand.java b/src/main/java/io/papermc/paper/command/PaperVersionCommand.java
-index 5f17c295e2158b93ed6f77012c0ac5507ac88284..f68298bb8cc8f83c9b1b05b2f8be4d7a238a1395 100644
+index 5f17c295e2158b93ed6f77012c0ac5507ac88284..770978bf16c4f062e950f647c4a43bbd4462ab2e 100644
 --- a/src/main/java/io/papermc/paper/command/PaperVersionCommand.java
 +++ b/src/main/java/io/papermc/paper/command/PaperVersionCommand.java
-@@ -162,17 +162,65 @@ public class PaperVersionCommand {
+@@ -162,17 +162,66 @@ public class PaperVersionCommand {
          return this.computedVersion;
      }
  
@@ -59,6 +59,7 @@ index 5f17c295e2158b93ed6f77012c0ac5507ac88284..f68298bb8cc8f83c9b1b05b2f8be4d7a
 +            entry("Erstellt", Component.text(buildTime, ACCENT)), Component.newline(),
 +            entry("API", Component.text(Bukkit.getBukkitVersion(), NamedTextColor.GRAY)), Component.newline(),
 +            entry("Status", this.versionFetcher.getVersionMessage()), Component.newline(),
++            entry("Dev", Component.text("vertraxumtes", ACCENT).append(Component.text(" (Jannik)", NamedTextColor.GRAY))), Component.newline(),
 +            DIVIDER
 +        );
 +    }
